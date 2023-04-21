@@ -9,6 +9,11 @@ import mmcv
 from typing import Optional
 import mmengine
 import cv2
+from torchvision import transforms as pth_transforms
+import torch
+from mmseg.structures import SegDataSample
+from mmcv.transforms import to_tensor
+from mmengine.structures import PixelData
 
 @TRANSFORMS.register_module()
 class LoadVideoSequenceFromFile(BaseTransform):
@@ -29,6 +34,10 @@ class LoadVideoSequenceFromFile(BaseTransform):
 
     def __init__(self, resize=(640, 480)) -> None:
         self.resize = resize
+        self.img_transform = pth_transforms.Compose([
+            pth_transforms.ToTensor(),
+            pth_transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ])
 
     def transform(self, results: dict) -> Optional[dict]:
         """Functions to load image.
@@ -45,14 +54,25 @@ class LoadVideoSequenceFromFile(BaseTransform):
         seg_names = results['seg_map_path']
 
         # NxHxWx3 (BGR)
-        images = np.array([cv2.resize(cv2.imread(f), self.resize, interpolation=cv2.INTER_LINEAR)  for f in orig_names]) 
+        images = [cv2.resize(cv2.cvtColor(cv2.imread(f), cv2.COLOR_BGR2RGB), self.resize, interpolation=cv2.INTER_LINEAR) for f in orig_names]
         # NxHxW 
-        seg_maps = np.array([cv2.resize(cv2.imread(f), self.resize, interpolation=cv2.INTER_NEAREST)[:,:,0]  for f in seg_names]) 
+        seg_maps = [cv2.resize(cv2.imread(f), self.resize, interpolation=cv2.INTER_NEAREST)[:,:,0]  for f in seg_names]
+        seg_maps = torch.cat([to_tensor(map[None,...].astype(np.int64)) for map in seg_maps], dim=0)
+        seg_maps[seg_maps == 0] = 255
+        seg_maps = seg_maps - 1
+        seg_maps[seg_maps == 254] = 255
 
         results['img_path'] = None
         results['seg_map_path'] = None
+        results['inputs'] = torch.cat([torch.from_numpy(i).unsqueeze(0) for i in images], dim=0)
+        
+        
 
-        results['inputs'] = images
+        data_sample = SegDataSample()
+        
+        gt_sem_seg_data = dict(data=torch.cat(seg_maps, dim=0))
+        data_sample.gt_sem_seg = PixelData(**gt_sem_seg_data)
+        
         results['data_samples'] = seg_maps
 
         return results
@@ -214,7 +234,7 @@ class VSPWDataset(BaseSegDataset):
         lines = mmengine.list_from_file(
             self.ann_file, backend_args=self.backend_args)
         
-        for line in lines[:10]:
+        for line in lines:
             video_name = line.strip()
             mask_dir = os.path.join(self.data_root, "data", video_name, "mask")
             orig_dir = os.path.join(self.data_root, "data", video_name, "origin")
