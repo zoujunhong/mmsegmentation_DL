@@ -3,7 +3,7 @@ import os
 import warnings
 from mmseg.registry import DATASETS, TRANSFORMS
 from .basesegdataset import BaseSegDataset
-from mmcv.transforms import BaseTransform
+from mmcv.transforms import BaseTransform, RandomFlip
 import numpy as np
 import mmcv
 from typing import Optional
@@ -27,8 +27,9 @@ class LoadVideoSequenceFromFile(BaseTransform):
     Args:
     """
 
-    def __init__(self, resize=(640, 480)) -> None:
+    def __init__(self, resize=(640, 480), flip_prob=0.5) -> None:
         self.resize = resize
+        self.flip_prob = flip_prob
 
     def transform(self, results: dict) -> Optional[dict]:
         """Functions to load image.
@@ -48,6 +49,14 @@ class LoadVideoSequenceFromFile(BaseTransform):
         images = np.array([cv2.resize(cv2.imread(f), self.resize, interpolation=cv2.INTER_LINEAR)  for f in orig_names]) 
         # NxHxW 
         seg_maps = np.array([cv2.resize(cv2.imread(f), self.resize, interpolation=cv2.INTER_NEAREST)[:,:,0]  for f in seg_names]) 
+        
+        # flip
+        if np.random.uniform(0, 1)<self.flip_prob:
+            images = images[:, :, ::-1, :]
+            seg_maps = seg_maps[:, :, ::-1]
+            results['is_flipped'] = True
+        else:
+            results['is_flipped'] = False
 
         results['img_path'] = None
         results['seg_map_path'] = None
@@ -58,7 +67,9 @@ class LoadVideoSequenceFromFile(BaseTransform):
         return results
 
     def __repr__(self):
-        repr_str = ""
+        repr_str = self.__class__.__name__
+        repr_str += (f'(resize={self.resize}, '
+                     f'flip_prob={self.flip_prob})')
         return repr_str
 
 
