@@ -27,8 +27,8 @@ class LoadVideoSequenceFromFile(BaseTransform):
     Args:
     """
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, resize=(640, 480)) -> None:
+        self.resize = resize
 
     def transform(self, results: dict) -> Optional[dict]:
         """Functions to load image.
@@ -45,9 +45,9 @@ class LoadVideoSequenceFromFile(BaseTransform):
         seg_names = results['seg_map_path']
 
         # NxHxWx3 (BGR)
-        images = np.array([cv2.imread(f) for f in orig_names]) 
+        images = np.array([cv2.resize(cv2.imread(f), self.resize, interpolation=cv2.INTER_LINEAR)  for f in orig_names]) 
         # NxHxW 
-        seg_maps = np.array([cv2.imread(f)[...,0] for f in seg_names]) 
+        seg_maps = np.array([cv2.resize(cv2.imread(f), self.resize, interpolation=cv2.INTER_NEAREST)[:,:,0]  for f in seg_names]) 
 
         results['img_path'] = None
         results['seg_map_path'] = None
