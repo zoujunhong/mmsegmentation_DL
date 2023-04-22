@@ -1,9 +1,9 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import os
-import warnings
 from mmseg.registry import DATASETS, TRANSFORMS
 from .basesegdataset import BaseSegDataset
-from mmcv.transforms import BaseTransform
+from mmcv.transforms import BaseTransform, RandomFlip
+import numpy.random as random
 import numpy as np
 import mmcv
 from typing import Optional
@@ -32,12 +32,23 @@ class LoadVideoSequenceFromFile(BaseTransform):
     Args:
     """
 
-    def __init__(self, resize=(640, 480)) -> None:
+    def __init__(self, resize=(640, 480), flip_prob=0.5, brightness_delta=32, 
+                 contrast_range=(0.5, 1.5),saturation_range=(0.5, 1.5), hue_delta=18) -> None:
         self.resize = resize
+        
+        self.flip_prob = flip_prob
+
+        self.brightness_delta = brightness_delta
+        self.contrast_lower, self.contrast_upper = contrast_range
+        self.saturation_lower, self.saturation_upper = saturation_range
+        self.hue_delta = hue_delta
+
+
         self.img_transform = pth_transforms.Compose([
             pth_transforms.ToTensor(),
             pth_transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
         ])
+
 
     def transform(self, results: dict) -> Optional[dict]:
         """Functions to load image.
@@ -56,11 +67,42 @@ class LoadVideoSequenceFromFile(BaseTransform):
         # NxHxWx3 (BGR)
         images = [cv2.resize(cv2.cvtColor(cv2.imread(f), cv2.COLOR_BGR2RGB), self.resize, interpolation=cv2.INTER_LINEAR) for f in orig_names]
         # NxHxW 
-        seg_maps = [cv2.resize(cv2.imread(f), self.resize, interpolation=cv2.INTER_NEAREST)[:,:,0]  for f in seg_names]
+
+        seg_maps = np.array([cv2.resize(cv2.imread(f), self.resize, interpolation=cv2.INTER_NEAREST)[:,:,0]  for f in seg_names]) 
+        
+        # flip
+        if np.random.uniform(0, 1)<self.flip_prob:
+            images = images[:, :, ::-1, :]
+            seg_maps = seg_maps[:, :, ::-1]
+            results['is_flipped'] = True
+        else:
+            results['is_flipped'] = False
+        
+        # brightness
+        # random brightness
+        images = self.brightness(images)
+
+        # mode == 0 --> do random contrast first
+        # mode == 1 --> do random contrast last
+        mode = random.randint(2)
+        if mode == 1:
+            images = self.contrast(images)
+
+        # random saturation
+        images = self.saturation(images)
+
+        # random hue
+        images = self.hue(images)
+
+        # random contrast
+        if mode == 0:
+            images = self.contrast(images)
+
         seg_maps = torch.cat([to_tensor(map[None,...].astype(np.int64)) for map in seg_maps], dim=0)
         seg_maps[seg_maps == 0] = 255
         seg_maps = seg_maps - 1
         seg_maps[seg_maps == 254] = 255
+
 
         results['img_path'] = None
         results['seg_map_path'] = None
@@ -77,8 +119,101 @@ class LoadVideoSequenceFromFile(BaseTransform):
 
         return results
 
+    def convert(self,
+                img: np.ndarray,
+                alpha: int = 1,
+                beta: int = 0) -> np.ndarray:
+        """Multiple with alpha and add beat with clip.
+
+        Args:
+            img (np.ndarray): The input image.
+            alpha (int): Image weights, change the contrast/saturation
+                of the image. Default: 1
+            beta (int): Image bias, change the brightness of the
+                image. Default: 0
+
+        Returns:
+            np.ndarray: The transformed image.
+        """
+
+        img = img.astype(np.float32) * alpha + beta
+        img = np.clip(img, 0, 255)
+        return img.astype(np.uint8)
+
+    def brightness(self, img: np.ndarray) -> np.ndarray:
+        """Brightness distortion.
+
+        Args:
+            img (np.ndarray): The input image.
+        Returns:
+            np.ndarray: Image after brightness change.
+        """
+
+        if random.randint(2):
+            return self.convert(
+                img, beta=random.uniform(-self.brightness_delta,
+                                    self.brightness_delta))
+        return img
+
+    def contrast(self, img: np.ndarray) -> np.ndarray:
+        """Contrast distortion.
+
+        Args:
+            img (np.ndarray): The input image.
+        Returns:
+            np.ndarray: Image after contrast change.
+        """
+
+        if random.randint(2):
+            return self.convert(
+                img, alpha=random.uniform(self.contrast_lower, self.contrast_upper))
+        return img
+    
+    def hue(self, img: np.ndarray) -> np.ndarray:
+        """Hue distortion.
+
+        Args:
+            img (np.ndarray): The input image.
+        Returns:
+            np.ndarray: Image after hue change.
+        """
+
+        if random.randint(2):
+            rand_num = random.randint(-self.hue_delta, self.hue_delta)
+            img = np.array([mmcv.bgr2hsv(i) for i in img])
+            img[:, :, :, 0] = (img[:, :, :, 0].astype(int) + rand_num) % 180
+            img = np.array([mmcv.hsv2bgr(i) for i in img])
+        return img
+
+    def saturation(self, img: np.ndarray) -> np.ndarray:
+        """Saturation distortion.
+
+        Args:
+            img (np.ndarray): The input image.
+        Returns:
+            np.ndarray: Image after saturation change.
+        """
+
+        if random.randint(2):
+            rand_num = random.uniform(self.saturation_lower, self.saturation_upper)
+            img = np.array([mmcv.bgr2hsv(i) for i in img])
+            img[:, :, :, 1] = self.convert(
+                img[:, :, :, 1], alpha=rand_num)
+            # img = mmcv.hsv2bgr(img)
+            img = np.array([mmcv.hsv2bgr(i) for i in img])
+        return img
+
     def __repr__(self):
-        repr_str = ""
+        repr_str = self.__class__.__name__
+        repr_str += (f'(resize={self.resize}, '
+                     f'flip_prob={self.flip_prob}, '
+                     f'(brightness_delta={self.brightness_delta}, '
+                     f'contrast_range=({self.contrast_lower}, '
+                     f'{self.contrast_upper}), '
+                     f'saturation_range=({self.saturation_lower}, '
+                     f'{self.saturation_upper}), '
+                     f'hue_delta={self.hue_delta})'
+                     )
         return repr_str
 
 
