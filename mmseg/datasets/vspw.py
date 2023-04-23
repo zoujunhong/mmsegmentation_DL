@@ -44,12 +44,6 @@ class LoadVideoSequenceFromFile(BaseTransform):
         self.hue_delta = hue_delta
 
 
-        self.img_transform = pth_transforms.Compose([
-            pth_transforms.ToTensor(),
-            pth_transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-        ])
-
-
     def transform(self, results: dict) -> Optional[dict]:
         """Functions to load image.
 
@@ -65,15 +59,15 @@ class LoadVideoSequenceFromFile(BaseTransform):
         seg_names = results['seg_map_path']
 
         # NxHxWx3 (BGR)
-        images = [cv2.resize(cv2.cvtColor(cv2.imread(f), cv2.COLOR_BGR2RGB), self.resize, interpolation=cv2.INTER_LINEAR) for f in orig_names]
+        images = np.array([cv2.resize(cv2.cvtColor(cv2.imread(f), cv2.COLOR_BGR2RGB), self.resize, interpolation=cv2.INTER_LINEAR) for f in orig_names])
         # NxHxW 
 
-        seg_maps = np.array([cv2.resize(cv2.imread(f), self.resize, interpolation=cv2.INTER_NEAREST)[:,:,0]  for f in seg_names]) 
+        seg_maps = [cv2.resize(cv2.imread(f), self.resize, interpolation=cv2.INTER_NEAREST)[:,:,0]  for f in seg_names]
         
         # flip
         if np.random.uniform(0, 1)<self.flip_prob:
-            images = images[:, :, ::-1, :]
-            seg_maps = seg_maps[:, :, ::-1]
+            images = np.flip(images, axis=2).copy()
+            seg_maps = [np.flip(i, axis=1).copy() for i in seg_maps]
             results['is_flipped'] = True
         else:
             results['is_flipped'] = False
@@ -98,6 +92,8 @@ class LoadVideoSequenceFromFile(BaseTransform):
         if mode == 0:
             images = self.contrast(images)
 
+        images = torch.from_numpy(images).permute(0,3,1,2)
+
         seg_maps = torch.cat([to_tensor(map[None,...].astype(np.int64)) for map in seg_maps], dim=0)
         seg_maps[seg_maps == 0] = 255
         seg_maps = seg_maps - 1
@@ -106,16 +102,14 @@ class LoadVideoSequenceFromFile(BaseTransform):
 
         results['img_path'] = None
         results['seg_map_path'] = None
-        results['inputs'] = torch.cat([torch.from_numpy(i).unsqueeze(0) for i in images], dim=0)
-        
-        
+        results['inputs'] = images
 
         data_sample = SegDataSample()
         
-        gt_sem_seg_data = dict(data=torch.cat(seg_maps, dim=0))
+        gt_sem_seg_data = dict(data=seg_maps)
         data_sample.gt_sem_seg = PixelData(**gt_sem_seg_data)
         
-        results['data_samples'] = seg_maps
+        results['data_samples'] = data_sample
 
         return results
 

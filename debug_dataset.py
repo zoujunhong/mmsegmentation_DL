@@ -8,10 +8,10 @@ import cv2
 
 def show_one_sample(sample):
     imgs = sample["inputs"]
-    seg_maps = sample["data_samples"]
+    seg_maps = sample["data_samples"].gt_sem_seg.data
     for img, seg_map in zip(imgs, seg_maps):
-        cv2.imshow("Image", img)
-        cv2.imshow("Segmentation", seg_map)
+        cv2.imshow("Image", img.permute(1,2,0).numpy())
+        cv2.imshow("Segmentation", seg_map.numpy())
         cv2.waitKey(0)
 
 train_dataset = VSPWDataset(data_root="./VSPW_480p", ann_file="train.txt", seq_length=5)
