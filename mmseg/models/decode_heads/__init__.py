@@ -18,6 +18,7 @@ from .knet_head import IterativeDecodeHead, KernelUpdateHead, KernelUpdator
 from .lraspp_head import LRASPPHead
 from .mask2former_head import Mask2FormerHead
 from .maskformer_head import MaskFormerHead
+from .maskformer_head_video import MaskFormerHeadVideo
 from .nl_head import NLHead
 from .ocr_head import OCRHead
 from .pid_head import PIDHead
@@ -40,6 +41,6 @@ __all__ = [
     'PointHead', 'APCHead', 'DMHead', 'LRASPPHead', 'SETRUPHead',
     'SETRMLAHead', 'DPTHead', 'SETRMLAHead', 'SegmenterMaskTransformerHead',
     'SegformerHead', 'ISAHead', 'STDCHead', 'IterativeDecodeHead',
-    'KernelUpdateHead', 'KernelUpdator', 'MaskFormerHead', 'Mask2FormerHead',
+    'KernelUpdateHead', 'KernelUpdator', 'MaskFormerHead', 'MaskFormerHeadVideo', 'Mask2FormerHead',
     'LightHamHead', 'PIDHead'
 ]

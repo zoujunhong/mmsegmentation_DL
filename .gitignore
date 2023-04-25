@@ -118,3 +118,6 @@ mmseg/.mim
 
 # Pytorch
 *.pth
+
+VSPW_480p/
+vspw_480p.zip
