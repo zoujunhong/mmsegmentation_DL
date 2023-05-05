@@ -99,9 +99,11 @@ class LoadVideoSequenceFromFile(BaseTransform):
         seg_maps = seg_maps - 1
         seg_maps[seg_maps == 254] = 255
 
-
-        results['img_path'] = None
-        results['seg_map_path'] = None
+        
+        del results['img_path']
+        del results['seg_map_path']
+        # results['img_path'] = None
+        # results['seg_map_path'] = None
         results['inputs'] = images
 
         data_sample = SegDataSample()
@@ -378,9 +380,9 @@ class VSPWDataset(BaseSegDataset):
                 data_info["img_path"] = [os.path.join(orig_dir, base_name+self.img_suffix) for base_name in base_names]
                 data_info["seg_map_path"] = [os.path.join(mask_dir, base_name+self.seg_map_suffix) for base_name in base_names]
 
-                data_info['label_map'] = self.label_map
-                data_info['reduce_zero_label'] = self.reduce_zero_label
-                data_info['seg_fields'] = []
+#                 data_info['label_map'] = self.label_map
+#                 data_info['reduce_zero_label'] = self.reduce_zero_label
+#                 data_info['seg_fields'] = []
                 data_list.append(data_info)
         data_list = sorted(data_list, key=lambda x: x['img_path'])
         return data_list
